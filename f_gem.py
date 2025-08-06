@@ -42,7 +42,7 @@ CHUNK_SIZE = int(EXOTEL_SAMPLE_RATE * CHUNK_DURATION_MS / 1000)
 FIXED_RECORDING_DURATION = 8.0
 VOICE_THRESHOLD = 0.008  # RMS threshold for voice detection (slightly higher)
 SILENCE_THRESHOLD = 0.003  # RMS threshold for silence (lower for better detection)
-SILENCE_DURATION_TO_STOP = 2  # Stop recording after 1.2s of silence
+SILENCE_DURATION_TO_STOP = 1.2  # Stop recording after 1.2s of silence
 MIN_RECORDING_DURATION = 0.3  # Minimum recording time
 PRE_SPEECH_BUFFER_SIZE = 5  # Number of chunks to keep before speech detection
 POST_AI_SPEECH_DELAY = 0.1  # Delay before starting to listen after AI speaks
@@ -341,7 +341,7 @@ class EnhancedCallManager:
 
     def clear_audio_buffers(self):
         """Clear all audio buffers and reset VAD"""
-        print("[VAD] Clearing audio buffers")
+        # print("[VAD] Clearing audio buffers")
         self.audio_buffer = []
         self.vad.reset()
         self.is_recording = False
@@ -350,13 +350,13 @@ class EnhancedCallManager:
 
     def start_ai_speaking(self):
         """Transition to AI speaking state and clear buffers"""
-        print("[VAD] AI starting to speak - clearing buffers")
+        # print("[VAD] AI starting to speak - clearing buffers")
         self.state = CallState.AI_SPEAKING
         self.clear_audio_buffers()
 
     def finish_ai_speaking(self):
         """Transition from AI speaking to post-delay state"""
-        print(f"[VAD] AI finished speaking - starting {POST_AI_SPEECH_DELAY}s delay")
+        # print(f"[VAD] AI finished speaking - starting {POST_AI_SPEECH_DELAY}s delay")
         self.state = CallState.POST_AI_DELAY
         self.ai_speech_end_time = time.time()
         self.clear_audio_buffers()  # Clear any residual audio
@@ -372,7 +372,7 @@ class EnhancedCallManager:
     def start_recording(self):
         """Start recording user speech"""
         if not self.is_recording:
-            print("[VAD] Starting speech recording")
+            # print("[VAD] Starting speech recording")
             self.is_recording = True
             # Include pre-speech buffer
             pre_speech_audio = self.vad.get_pre_speech_audio()
@@ -394,7 +394,7 @@ class EnhancedCallManager:
             return True
         if (recording_duration >= MIN_RECORDING_DURATION and
                 silence_duration >= SILENCE_DURATION_TO_STOP):
-            print(f"[VAD] Silence timeout ({silence_duration:.1f}s)")
+            # print(f"[VAD] Silence timeout ({silence_duration:.1f}s)")
             return True
         return False
 
@@ -402,7 +402,7 @@ class EnhancedCallManager:
         """Stop recording and return duration"""
         if self.is_recording:
             duration = time.time() - self.recording_start_time
-            print(f"[VAD] Stopped recording ({duration:.1f}s)")
+            # print(f"[VAD] Stopped recording ({duration:.1f}s)")
             self.is_recording = False
             self.vad.clear_pre_speech_buffer()  # Clear pre-speech buffer
             return True
@@ -416,7 +416,7 @@ async def process_audio_chunk(audio_chunk, call_manager, websocket):
     # Handle post-AI speech delay
     if call_manager.state == CallState.POST_AI_DELAY:
         if call_manager.can_start_listening():
-            print("[VAD] Post-AI delay complete - ready to listen")
+            # print("[VAD] Post-AI delay complete - ready to listen")
             call_manager.state = CallState.WAITING
         else:
             # Still in delay period, ignore audio
@@ -469,7 +469,7 @@ async def process_recorded_audio(call_manager, websocket):
                 int(len(combined_audio) * AUDIO_SAMPLE_RATE / EXOTEL_SAMPLE_RATE)
             )
 
-            print(f"[VAD] Processing {duration:.1f}s of audio")
+            # print(f"[VAD] Processing {duration:.1f}s of audio")
             user_english_input, detected_lang = speech_to_english_text(audio_16k.astype(np.int16))
 
             # Lock language after first successful recognition in conversation stage
@@ -695,15 +695,8 @@ async def handle_exotel_call(websocket):
 async def main():
     """Start the server"""
     print(f"[CALL] Starting server on ws://localhost:{WEBSOCKET_PORT}")
-    print(f"[CALL] Enhanced VAD Configuration:")
-    print(f"  - Voice Threshold: {VOICE_THRESHOLD}")
-    print(f"  - Silence Threshold: {SILENCE_THRESHOLD}")
-    print(f"  - Post-AI Delay: {POST_AI_SPEECH_DELAY}s")
-    print(f"  - VAD Window Size: {VAD_WINDOW_SIZE}")
-    print(f"  - Pre-speech Buffer: {PRE_SPEECH_BUFFER_SIZE} chunks")
 
     async with websockets.serve(handle_exotel_call, "localhost", WEBSOCKET_PORT):
-        print("[CALL] Server ready")
         await asyncio.Future()
 
 
