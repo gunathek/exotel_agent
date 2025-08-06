@@ -39,7 +39,7 @@ CHUNK_DURATION_MS = 20  # 20ms chunks
 CHUNK_SIZE = int(EXOTEL_SAMPLE_RATE * CHUNK_DURATION_MS / 1000)
 
 # Enhanced VAD settings
-FIXED_RECORDING_DURATION = 5.0  # Record for 4 seconds max
+FIXED_RECORDING_DURATION = 8.0
 VOICE_THRESHOLD = 0.008  # RMS threshold for voice detection (slightly higher)
 SILENCE_THRESHOLD = 0.003  # RMS threshold for silence (lower for better detection)
 SILENCE_DURATION_TO_STOP = 2  # Stop recording after 1.2s of silence
@@ -51,7 +51,6 @@ NOISE_FLOOR_ADAPTATION_RATE = 0.1  # Rate at which noise floor adapts
 # VAD window settings
 VAD_WINDOW_SIZE = 3  # Number of consecutive chunks to confirm voice activity
 VAD_CONFIRMATION_THRESHOLD = 2  # Minimum chunks in window that must be above threshold
-
 WEBSOCKET_PORT = 8765
 
 # Language settings
@@ -130,20 +129,26 @@ You are {AI_NAME}, a polite and professional assistant from {COMPANY_NAME_FOR_LL
 
 **Instructions**:
 - Use the following information to answer user queries:
-  - Why or need for upload: Uploading your bank statement helps process your loan application faster and can lead to a better credit line.
+  - Why or need for upload: Uploading your bank statement helps process your loan application faster and can lead to a better loan amount.
   - Which account: You need to upload the bank statement for your salary account, the account where your salary is credited.
   - Period of statement: You need to upload the bank statement for the last 4 months.
   - How to upload: There are several ways to upload your bank statement in the Zype app: through an Account Aggregator, using Netbanking, or by directly uploading a PDF file.
   - Where to upload: All these upload options are available within the Zype app.
   - When to upload: Upload the salary bank statement as soon as possible so that we can process your application faster.
-  - Facing issues while uploading: Our customer support executive will contact you shortly.
+  - Facing issues while uploading or failed while uploading: Our customer support executive will contact you shortly.
   - Requesting callback: Our customer support executive will contact you shortly.
   - For any other queries: Our customer support executive will contact you shortly.
 - Responses MUST be in polite, conversational English, ending with a period (.). Aim for 1 short sentences directly to the point.
 - Do not repeat the user's query in your response.
 - After addressing the query, if the user seems ready (e.g., "Okay", "Alright"), ask for an ETA if not provided. Example: "Okay. So, will you be able to do it by this evening?"
-- If the user provides an ETA (e.g., "I'll do it today"), acknowledge and close. Example: "That's great. We'll wait for your statement by [ETA]. Thank you! Have a good day."
-- If the user says they have already uploaded, thank them and close. Example: "Thanks for uploading, we'll start processing your application. Have a good day."
+- If the user provides an ETA (e.g., "I'll do it today"), acknowledge and close. Example: "That's great. We'll wait for your statement. Thank you! Have a good day."
+- If the user says they have already uploaded, thank them and
+ close. Example: "Thanks for uploading, we'll start processing your application. Have a good day."
+- If the user says they have taken a loan from somewhere else, thank them for informing and tell them that they can still upload the statement and get an offer if they want a loan in future and end. Example: "Thanks for the update. You can still share your bank statement to check future offers. Thank you! Have a good day."
+- If the user says they dont want a loan anymore, acknowledge it and politely ask for the reason for not wanting a loan. Example: "i respect your decision but may i ask you if there is a reason for not wanting a loan. We might offer better terms or resolve your concern"
+- If the user says they have a preapproved offer and why ask for additional documents, acknowledge and tell them that the offer was based on initial checks and we need a few documents verify latest details and finalize it. Example: "Your offer is based on initial checks. We need a few documents to verify latest details and finalize it."
+- If the user says they don’t have 4 months statement or they have less than 4 months statement, acknowledge and tell them that 4 months bank statement is required to verify the income and process the loan, if they are not sure how to download it we can arrange a call back to guide you. Example: "I can understand, but the 4-month bank statement is required to verify the income and process the loan smoothly, if you are not sure how to download it we can arrange a call back to guide you."
+- If the user says their phone number isn’t linked to bank for AA (Account Aggregator), acknowledge and tell them to link their number at the bank or upload their 4-month statement as an alternative. Example: "Please link your number at the bank or upload your 4-month statement as an alternative."
 
 **Strict Rules**:
 - NO "Is there anything else...", NO PII requests, NO financial advice, NO arguing.
@@ -503,7 +508,7 @@ async def handle_greeting_response(user_english_input, call_manager, websocket):
 
     call_manager.conversation_stage = "introduction"
     await say_to_user(websocket, generate_ai_self_introduction(), call_manager)
-    await asyncio.sleep(0.5)
+    await asyncio.sleep(0.1)
     purpose = generate_ai_main_purpose_statement()
     await say_to_user(websocket, purpose, call_manager)
     call_manager.conversation_stage = "conversation"
@@ -511,7 +516,7 @@ async def handle_greeting_response(user_english_input, call_manager, websocket):
 
 async def handle_conversation(user_english_input, call_manager, websocket):
     """Handle main conversation with LLM"""
-    if call_manager.unclear_input_count >= 3:
+    if call_manager.unclear_input_count >= 4:
         await say_and_end(websocket,
                           "It seems there might be an issue with the line. We'll try to contact you later. Thank you.",
                           call_manager)
@@ -530,7 +535,7 @@ async def handle_conversation(user_english_input, call_manager, websocket):
         llm_response_en = post_process_llm_english_response(llm_response.content, user_english_input)
 
         # Check for closing conditions
-        closing_words = ["thank you! have a good day", "thanks for your time", "we'll try to contact you later"]
+        closing_words = ["thank you! have a good day", "thanks for your time", "we'll try to contact you later", "contact you shortly"]
         is_closing = any(word in llm_response_en.lower() for word in closing_words)
 
         eta_keywords = ["today", "tomorrow", "evening", "morning", "will do", "i'll upload", "i will upload"]
@@ -600,8 +605,10 @@ async def say_and_end(websocket, english_text, call_manager):
     except Exception as e:
         print(f"[ERROR] AI speech failed: {e}")
 
-    call_manager.state = CallState.ENDED
-
+    finally:
+        call_manager.state = CallState.ENDED
+        await websocket.close()
+        print("[CALL] WebSocket connection closed to end the call")
 
 async def stream_audio_to_exotel(websocket, audio_data, sample_rate):
     """Stream audio data to Exotel"""
